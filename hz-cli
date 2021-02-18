@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+
+function usage() {
+  cat <<EOF
+Usage:
+  ./hz-cli -h <hostname> [-p <port>] [-u <username>]
+
+Gentle Reminders:
+ - Make sure you are using the appropriate Java version.
+ - After connecting to Hazelcast cluster, type \`help\` to see the list of
+   available commands.
+ - An example usage after a successful connection might be \`ns <map-name>\`,
+   followed by \`m.keys\` to list all the keys for that particular map.
+ - To change the Hazelcast version after first run, delete everything in
+   $HOME/.hz-cli.
+
+ಠ_ಠ
+EOF
+}
+
+function promptAndDownloadHzJar() {
+  printf "No existing hazelcast-all-<version>.jar detected at $hzDir\n"
+  printf "Please enter desired version to download (default: 3.8.2): "
+  read hzVersion
+  if ! [ "$hzVersion" ]; then
+    hzVersion=3.8.2
+  fi
+  printf "Downloading hazelcast-all-$hzVersion.jar..."
+  curl --silent --location --remote-name \
+    "https://repo1.maven.org/maven2/com/hazelcast/hazelcast-all/$hzVersion/hazelcast-all-$hzVersion.jar"
+  printf "done!\n"
+}
+
+function extractVersionFromExsitingJarFile() {
+  # E.g., hazelcast-all-3.8.2.jar
+  jarFile=$(ls hazelcast-all-* | head -n 1 | grep "hazelcast-all-.*\.jar" --only-match)
+
+  # E.g., 3.8.2.jar
+  withoutPrefix=${jarFile#hazelcast-all-}
+
+  # E.g., 3.8.2
+  hzVersion=${withoutPrefix%.jar}
+}
+
+function createHazelcastClientXml() {
+  user=$1
+  password=$2
+  host=$3
+  port=$4
+
+  if [ "$port" ]; then
+    server="$host:$port"
+  else
+    server="$host"
+  fi
+
+  rm -rf hazelcast-client.xml > /dev/null 2>&1 || true
+  cat <<EOF > hazelcast-client.xml
+  <hazelcast-client xmlns="http://www.hazelcast.com/schema/client-config">
+    <group>
+        <name>$user</name>
+        <password>$password</password>
+    </group>
+    <network>
+        <cluster-members>
+            <address>$server</address>
+        </cluster-members>
+    </network>
+  </hazelcast-client>
+EOF
+}
+
+# Parse commandline options
+while :; do
+  case $1 in 
+    --help)
+      usage
+      exit
+      ;;
+
+    -h)
+      if [ "$2" ]; then
+        host=$2
+        shift
+      else
+        usage
+      fi
+      ;;
+
+    -p)
+      if [ "$2" ]; then
+        port=$2
+        shift
+      else
+        usage
+      fi
+      ;;
+
+    -u)
+      if [ "$2" ]; then
+        user=$2
+        shift
+      else
+        usage
+      fi
+      ;;
+
+    *)
+      break
+  esac
+  shift
+done
+
+# Error if the required option is not passed in.
+if ! [ $host ]; then
+  usage
+  exit
+fi
+hzDir=$HOME/.hz-cli
+mkdir -p $hzDir
+cd $hzDir
+
+# Note: Using the ls-piped-to-grep trick to check if any file matching the
+# wildcard expression exists. If no such file exists, we attempt a download.
+hasExistngJarFile=$(ls | grep "hazelcast-all-.*\\.jar")
+if [ $hasExistngJarFile ]; then
+  extractVersionFromExsitingJarFile
+else
+  promptAndDownloadHzJar
+fi
+
+# Prompt for user name if not provided as commandline option.
+if ! [ $user ]; then
+  printf "Username: "
+  read user
+fi 
+
+printf "Password: "
+read -s password
+printf "\n"
+
+# Create the hazelcast-client.xml file that'll be used by the console
+# application.
+createHazelcastClientXml $user $password $host $port
+
+# Actual command to trigge the demo client console app provided with Hazelcast.
+# Adapted from the clientConsole.sh in a standard Hazelcast code samples
+# download.
+java -Djava.net.preferIPv4Stack=true -cp "hazelcast-all-$hzVersion.jar" \
+  com.hazelcast.client.console.ClientConsoleApp
+
+# Return to the current working directory.
+cd - 2>&1 > /dev/null
+
