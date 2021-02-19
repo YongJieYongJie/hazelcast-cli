@@ -11,9 +11,17 @@ connecting to a running Hazelcast cluster and performing various operations.
 > chmod u+x ./hz-cli
 > ./hz-cli -h <host-ip> -p <port, e.g. 5701> -u <username>
 
-# After connecting to the cluster
+# After connecting to the cluster...
+
+# List all the available distributed objects.
+hazelcast[default] > instances
+
+# Change to the relevant object we are interested in.
 hazelcast[default] > ns <name-of-map>
-hazelcast[default] > m.values
+
+# Perform relevant operation: listing stats, clearing, etc.
+hazelcast[name-of-map] > m.stats
+hazelcast[name-of-map] > m.clear
 ```
 
 
